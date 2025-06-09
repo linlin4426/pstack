@@ -217,29 +217,42 @@ emain(int argc, char **argv, Context &context)
     bool doPython = false;
     bool pythonModules = false;
 #endif
-    std::string execName;
+    std::filesystem::path execName;
     bool printAllStacks = false;
     int exitCode = -1; // used for options that exit immediately to signal exit.
     std::string subprocessCmd;
 
     Flags flags;
     flags
-    .add("replace-path",
-            'F',
-            "from:to",
-            "replace `from` with `to` in paths when finding shared libraries",
-            [&](const char *arg) {
-                auto sep = strchr(arg, ':');
-                if (sep == 0)
-                    usage(std::cerr, argv[0], flags);
-                context.pathReplacements.push_back(std::make_pair(
-                            std::string(arg, sep - arg), std::string(sep + 1))); })
 
     .add("debug-dir",
             'g',
             "directory",
             "extra location to find debug files for binaries and shared libraries",
-            [&](const char *arg) { context.addDebugDirectory(arg); })
+            [&](const char *arg) { context.debugPrefixes.push_back(arg); })
+
+    .add("exe-dir",
+            Flags::LONGONLY,
+            "directory",
+            "extra location to find executables and shared libraries",
+            [&](const char *arg) { context.exePrefixes.push_back(arg); })
+
+
+    .add("build-id-exepath",
+            Flags::LONGONLY,
+            "directory",
+            "extra location to find executable files from their build-ids",
+            [&](const char *arg) { context.exeBuildIdPrefixes.push_back(arg); })
+
+    .add("build-id-debugpath",
+            Flags::LONGONLY,
+            "directory",
+            "extra location to find debug files from their build-ids",
+            [&](const char *arg) { context.debugBuildIdPrefixes.push_back(arg); })
+    .add("no-buildid",
+            Flags::LONGONLY,
+            "don't look up files by build id",
+            Flags::setf( context.options.noBuildIds ) )
 
     .add("constant",
             'b',
@@ -360,10 +373,8 @@ emain(int argc, char **argv, Context &context)
              out = std::ofstream(opt, std::ofstream::out|std::ofstream::trunc);
              context.output = &out;
           })
-
 #ifdef DEBUGINFOD
-    .add("no-debuginfod", Flags::LONGONLY,
-          "disable debuginfod client", Flags::setf( context.options.noDebuginfod ) )
+    .add("debuginfod", 'R', "use debuginfod client", Flags::setf( context.options.withDebuginfod ) )
 #endif
 
     .parse(argc, argv);
@@ -376,7 +387,7 @@ emain(int argc, char **argv, Context &context)
     Elf::Object::sptr exec;
 
     if (execName != "")
-         exec = context.getImageForName(execName);
+         exec = context.getImage(execName);
 
     if (subprocessCmd != "") {
         // create a new process and trace it.
@@ -411,7 +422,7 @@ emain(int argc, char **argv, Context &context)
        try {
           auto process = Procman::Process::load(context, exec, argv[i]); // this calls the load() instance member.
           if (process == nullptr)
-             exec = context.getImageForName(argv[i]);
+             exec = context.getImage(argv[i]);
           else
              doStack(*process);
        } catch (const std::exception &e) {

@@ -646,17 +646,17 @@ std::ostream &operator<< (std::ostream &os, const JSON<Elf::Object> &elf)
     auto &ehdr = elf.object.getHeader();
     auto brand = ehdr.e_ident[EI_OSABI];
 
-    Mapper<ProgramHeaderName, decltype(elf.object.programHeaders)::mapped_type,
-       std::map<Elf::Word, Elf::Object::ProgramHeaders>> mappedSegments(elf.object.programHeaders);
+    Mapper<ProgramHeaderName, Elf::Object::ProgramHeadersByType::mapped_type, Elf::Object::ProgramHeadersByType>
+       mappedSegments(elf.object.programHeaders_);
     JObject writer(os);
     writer
         .field("type", typeNames[ehdr.e_type])
         .field("entry", ehdr.e_entry)
         .field("abi", brand < sizeof abiNames / sizeof abiNames[0]? abiNames[brand] : nullptr)
-        .field("sections", elf.object.sectionHeaders)
+        .field("sections", elf.object.sectionHeaders())
         .field("segments", mappedSegments, &elf.object)
         .field("notes", elf.object.notes())
-        .field("versioninfo", *elf.object.symbolVersions())
+        .field("versioninfo", elf.object.symbolVersions())
         ;
 
     if (elf.object.getInterpreter() != "")
